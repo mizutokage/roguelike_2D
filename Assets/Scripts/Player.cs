@@ -1,20 +1,32 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class Player : MonoBehaviour
 {
     public bool isMoving = false;//現在動いているかの判定
     
+    private BoxCollider2D boxCollider2;
+    public LayerMask blockingLayer;
+
+    public int attackDamage = 1;
+    private Animator animator;
+    
     // Start is called before the first frame update
     void Start()
     {
-        
+        boxCollider2 = GetComponent<BoxCollider2D>();
+        animator = GetComponent<Animator>();
     }
 
     // Update is called once per frame
     void Update()
     {
+        if (!GameManager.instance.playerTurn) {
+            return;
+        }
+
         int horizontal = (int)Input.GetAxisRaw("Horizontal");//変数に方向キー横軸の入力を格納
         int vertical = (int)Input.GetAxisRaw("Vertical");//変数に方向キー縦軸の入力を格納
 
@@ -38,19 +50,48 @@ public class Player : MonoBehaviour
 
         if(horizontal != 0 || vertical != 0)//横軸か縦軸の入力が0ではないとき
         {
-            Move(horizontal, vertical);//関数を呼ぶ（引数はキーボードの入力値）
+            ATMove(horizontal, vertical);//関数を呼ぶ（引数はキーボードの入力値）
         }
     }
+
+    public void ATMove(int x, int y) {
+        RaycastHit2D hit;
+        bool canMove = Move(x, y,  out hit);
+
+        if (hit.transform == null){
+            GameManager.instance.playerTurn = false;
+            return;
+        }
+
+        Damage hitComponent = hit.transform.GetComponent<Damage>();
+
+        if (!canMove && hit.transform != null) {
+            // 攻撃用の関数
+            OnCantMove(hitComponent);
+        }
+
+        GameManager.instance.playerTurn = false;
+    }
     
-    public void Move(int x, int y)//移動用の関数
+    public bool Move(int x, int y, out RaycastHit2D hit)//移動用の関数
     {
         Vector2 start = transform.position;//Playerの現在位置を変数に格納
         Vector2 end = start + new Vector2(x, y);//移動したい位置を格納
 
-        if (!isMoving)//今移動中でないかの確認
+        boxCollider2.enabled = false;
+
+        hit = Physics2D.Linecast(start, end, blockingLayer);
+
+        boxCollider2.enabled = true;
+
+        if (!isMoving && hit.transform == null)//今移動中でないかの確認
         {
             StartCoroutine(Movement(end));//実際にコルーチンでplayerを動かしていく
+
+            return true;
         }
+
+        return false;
     }
 
     IEnumerator Movement(Vector3 end)//playerを動かしていくコルーチン
@@ -72,4 +113,27 @@ public class Player : MonoBehaviour
         isMoving = false;//移動中の判定をfalseに
 
     }
+
+    void OnCantMove(Damage hit) {
+        hit.AttackDamage(attackDamage);
+        animator.SetTrigger("Attack");
+    }
+
+    private void OnTriggerEnter2D(Collider2D collision) {
+        if(collision.tag == "Food") {
+            collision.gameObject.SetActive(false);
+        }
+        else if(collision.tag == "Soda") {
+            collision.gameObject.SetActive(false);
+        }
+        else if(collision.tag == "Exit") {
+            // 遷移関数
+            Invoke("Restart", 1f);
+        }
+    }
+
+    public void Restart() {
+        SceneManager.LoadScene(0);
+    }
+
 }
